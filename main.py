@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 df = pd.read_csv('reg_6_complete.csv')
 df = df.iloc[:, 1:]
 
+#kategoricke premenne
 categorical_cols = []
 for col in df.columns:
     test_convert = pd.to_numeric(df[col], errors='coerce')
@@ -19,6 +20,7 @@ print(f"Categorical columns detected: {categorical_cols}")
 if categorical_cols:
     df = pd.get_dummies(df, columns=categorical_cols, drop_first=True)
 
+#konverzia na num hodnoty + odstranenie NaN
 for col in df.columns:
     df[col] = pd.to_numeric(df[col], errors='coerce')
 
@@ -29,6 +31,7 @@ print(f"After dropping NaN: {len(df_clean)} rows")
 print(f"\nColumn names: {df_clean.columns.tolist()}")
 print(f"Dataset shape: {df_clean.shape}\n")
 
+#def zavislej a nazavislych premennych
 y = df_clean['y'].values
 X = df_clean.drop(['y'], axis=1)
 
@@ -60,7 +63,7 @@ def best_subset_selection(X, y):
         print(f"Evaluating models with {k} predictor(s)...")
         best_rss = np.inf
         best_metrics = None
-
+        #generovanie kombinacii, vsetky podmnoziny z k
         for combo in combinations(range(n_features), k):
             X_subset = X_array[:, combo]
             model = LinearRegression()
@@ -68,6 +71,7 @@ def best_subset_selection(X, y):
             y_pred = model.predict(X_subset)
             rss = np.sum((y - y_pred) ** 2)
 
+            #vyber najlepsej kombinacie
             if rss < best_rss:
                 best_rss = rss
                 r2 = 1 - (rss / rss_null)
@@ -112,7 +116,7 @@ def forward_stepwise_selection(X, y):
         best_rss = np.inf
         best_feature = None
         best_metrics = None
-
+        #skusanie pridania kazdej zostavajucej premennej
         for feature in remaining:
             candidate = selected + [feature]
             model = LinearRegression()
