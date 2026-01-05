@@ -2,18 +2,10 @@ import pandas as pd
 import numpy as np
 from itertools import combinations
 from sklearn.linear_model import LinearRegression
-import openpyxl
+from sklearn.model_selection import cross_val_score
+import matplotlib.pyplot as plt
 
-wb = openpyxl.load_workbook('reg1.xlsx')
-ws = wb.active
-
-data = []
-for row in ws.iter_rows(values_only=True):
-    csv_string = row[0]
-    values = [v.strip().strip('"') for v in csv_string.split(',')]
-    data.append(values)
-
-df = pd.DataFrame(data[1:], columns=data[0])
+df = pd.read_csv('reg_6_complete.csv')
 df = df.iloc[:, 1:]
 
 categorical_cols = []
@@ -267,9 +259,208 @@ def print_results(method_name, results):
     print(f"  BIC = {best_bic['BIC']:.2f}")
     print(f"  Predictors: {best_bic['predictors']}")
 
-    filename = f"{method_name.lower().replace(' ', '_')}_results.xlsx"
-    results_df.to_excel(filename, index=False)
+    filename = f"{method_name.lower().replace(' ', '_')}_results.csv"
+    results_df.to_csv(filename, index=False)
     print(f"\nResults saved to '{filename}'")
+
+
+def calculate_cv_mse_curve(X, y, results, method_name, n_folds=10):
+    cv_mse_values = []
+    n_predictors_list = []
+
+    print(f"\nCalculating CV MSE for {method_name}...")
+
+    for k in sorted(results.keys()):
+        features = results[k]['features']
+
+        if not features:
+            continue
+
+        X_subset = X[features].values
+        model = LinearRegression()
+
+        cv_scores = cross_val_score(model, X_subset, y, cv=n_folds,
+                                    scoring='neg_mean_squared_error')
+        cv_mse = -cv_scores.mean()
+        cv_std = cv_scores.std()
+
+        cv_mse_values.append(cv_mse)
+        n_predictors_list.append(k)
+
+        print(f"  {k} predictors: CV MSE = {cv_mse:.2f} ± {cv_std:.2f}")
+
+    return n_predictors_list, cv_mse_values
+
+
+def plot_cv_mse_curves(best_subset_data, forward_data, backward_data):
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+
+    ax1 = axes[0, 0]
+    ax1.plot(best_subset_data[0], best_subset_data[1], 'o-',
+             label='Best Subset', linewidth=2, markersize=6)
+    ax1.plot(forward_data[0], forward_data[1], 's-',
+             label='Forward Stepwise', linewidth=2, markersize=6)
+    ax1.plot(backward_data[0], backward_data[1], '^-',
+             label='Backward Stepwise', linewidth=2, markersize=6)
+    ax1.set_xlabel('Number of Predictors', fontsize=12)
+    ax1.set_ylabel('Cross-Validation MSE', fontsize=12)
+    ax1.set_title('CV MSE Comparison: All Methods', fontsize=14, fontweight='bold')
+    ax1.legend(loc='best', fontsize=10)
+    ax1.grid(True, alpha=0.3)
+
+    for data, marker, color in [(best_subset_data, 'o', 'C0'),
+                                (forward_data, 's', 'C1'),
+                                (backward_data, '^', 'C2')]:
+        min_idx = np.argmin(data[1])
+        ax1.plot(data[0][min_idx], data[1][min_idx], marker,
+                 markersize=12, markerfacecolor='none',
+                 markeredgewidth=2, markeredgecolor=color)
+
+    ax2 = axes[0, 1]
+    ax2.plot(best_subset_data[0], best_subset_data[1], 'o-',
+             linewidth=2, markersize=8, color='C0')
+    min_idx = np.argmin(best_subset_data[1])
+    ax2.axvline(x=best_subset_data[0][min_idx], color='red',
+                linestyle='--', alpha=0.7, label=f'Min at {best_subset_data[0][min_idx]} predictors')
+    ax2.plot(best_subset_data[0][min_idx], best_subset_data[1][min_idx],
+             'r*', markersize=15, label=f'Min MSE = {best_subset_data[1][min_idx]:.2f}')
+    ax2.set_xlabel('Number of Predictors', fontsize=12)
+    ax2.set_ylabel('Cross-Validation MSE', fontsize=12)
+    ax2.set_title('Best Subset Selection', fontsize=14, fontweight='bold')
+    ax2.legend(loc='best', fontsize=9)
+    ax2.grid(True, alpha=0.3)
+
+    ax3 = axes[1, 0]
+    ax3.plot(forward_data[0], forward_data[1], 's-',
+             linewidth=2, markersize=8, color='C1')
+    min_idx = np.argmin(forward_data[1])
+    ax3.axvline(x=forward_data[0][min_idx], color='red',
+                linestyle='--', alpha=0.7, label=f'Min at {forward_data[0][min_idx]} predictors')
+    ax3.plot(forward_data[0][min_idx], forward_data[1][min_idx],
+             'r*', markersize=15, label=f'Min MSE = {forward_data[1][min_idx]:.2f}')
+    ax3.set_xlabel('Number of Predictors', fontsize=12)
+    ax3.set_ylabel('Cross-Validation MSE', fontsize=12)
+    ax3.set_title('Forward Stepwise Selection', fontsize=14, fontweight='bold')
+    ax3.legend(loc='best', fontsize=9)
+    ax3.grid(True, alpha=0.3)
+
+    ax4 = axes[1, 1]
+    ax4.plot(backward_data[0], backward_data[1], '^-',
+             linewidth=2, markersize=8, color='C2')
+    min_idx = np.argmin(backward_data[1])
+    ax4.axvline(x=backward_data[0][min_idx], color='red',
+                linestyle='--', alpha=0.7, label=f'Min at {backward_data[0][min_idx]} predictors')
+    ax4.plot(backward_data[0][min_idx], backward_data[1][min_idx],
+             'r*', markersize=15, label=f'Min MSE = {backward_data[1][min_idx]:.2f}')
+    ax4.set_xlabel('Number of Predictors', fontsize=12)
+    ax4.set_ylabel('Cross-Validation MSE', fontsize=12)
+    ax4.set_title('Backward Stepwise Selection', fontsize=14, fontweight='bold')
+    ax4.legend(loc='best', fontsize=9)
+    ax4.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig('cv_mse_curves.png', dpi=300, bbox_inches='tight')
+    print("\nCV MSE curves saved to 'cv_mse_curves.png'")
+    plt.show()
+
+
+def create_cv_summary_table(best_subset_data, forward_data, backward_data):
+    print("\n" + "=" * 80)
+    print("CROSS-VALIDATION MSE SUMMARY")
+    print("=" * 80)
+
+    summary_data = []
+
+    for method_name, data in [('Best Subset', best_subset_data),
+                              ('Forward Stepwise', forward_data),
+                              ('Backward Stepwise', backward_data)]:
+        min_idx = np.argmin(data[1])
+        min_mse = data[1][min_idx]
+        optimal_k = data[0][min_idx]
+
+        summary_data.append({
+            'Method': method_name,
+            'Optimal k': optimal_k,
+            'Min CV MSE': min_mse,
+            'CV RMSE': np.sqrt(min_mse)
+        })
+
+        print(f"\n{method_name}:")
+        print(f"  Optimal number of predictors: {optimal_k}")
+        print(f"  Minimum CV MSE: {min_mse:.4f}")
+        print(f"  CV RMSE: {np.sqrt(min_mse):.4f}")
+
+    summary_df = pd.DataFrame(summary_data)
+    summary_df.to_excel('cv_mse_summary.xlsx', index=False)
+    print("\nCV MSE summary saved to 'cv_mse_summary.xlsx'")
+
+    return summary_df
+
+
+def evaluate_optimal_models(X, y, best_subset_results, forward_results, backward_results,
+                            best_subset_data, forward_data, backward_data):
+    print("\n" + "=" * 80)
+    print("OPTIMAL MODEL EVALUATION (Selected by CV MSE)")
+    print("=" * 80)
+
+    detailed_results = []
+
+    for method_name, results, data in [('Best Subset', best_subset_results, best_subset_data),
+                                       ('Forward Stepwise', forward_results, forward_data),
+                                       ('Backward Stepwise', backward_results, backward_data)]:
+        min_idx = np.argmin(data[1])
+        optimal_k = data[0][min_idx]
+        features = results[optimal_k]['features']
+
+        print(f"\n{method_name} - Optimal Model ({optimal_k} predictors):")
+        print(f"Features: {', '.join(features)}")
+
+        X_subset = X[features].values
+        model = LinearRegression()
+
+        model.fit(X_subset, y)
+        y_pred = model.predict(X_subset)
+
+        from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
+        mse = mean_squared_error(y, y_pred)
+        rmse = np.sqrt(mse)
+        mae = mean_absolute_error(y, y_pred)
+        r2 = r2_score(y, y_pred)
+
+        cv_scores = cross_val_score(model, X_subset, y, cv=10,
+                                    scoring='neg_mean_squared_error')
+        cv_mse = -cv_scores.mean()
+        cv_rmse = np.sqrt(cv_mse)
+
+        detailed_results.append({
+            'Method': method_name,
+            'k': optimal_k,
+            'Training MSE': mse,
+            'Training RMSE': rmse,
+            'Training MAE': mae,
+            'Training R²': r2,
+            'CV MSE': cv_mse,
+            'CV RMSE': cv_rmse
+        })
+
+        print(f"  Training MSE: {mse:.4f}")
+        print(f"  Training RMSE: {rmse:.4f}")
+        print(f"  Training MAE: {mae:.4f}")
+        print(f"  Training R²: {r2:.4f}")
+        print(f"  CV MSE: {cv_mse:.4f}")
+        print(f"  CV RMSE: {cv_rmse:.4f}")
+
+    detailed_df = pd.DataFrame(detailed_results)
+    detailed_df.to_excel('optimal_models_detailed.xlsx', index=False)
+    print("\nDetailed results saved to 'optimal_models_detailed.xlsx'")
+
+    return detailed_df
+
+
+print("\n" + "=" * 80)
+print("CROSS-VALIDATION MSE ANALYSIS")
+print("=" * 80)
 
 
 print("\n" + "=" * 80)
@@ -284,3 +475,13 @@ print_results("Forward Stepwise Selection", forward_results)
 
 backward_results = backward_stepwise_selection(X, y)
 print_results("Backward Stepwise Selection", backward_results)
+
+best_subset_cv_data = calculate_cv_mse_curve(X, y, best_subset_results, "Best Subset Selection")
+forward_cv_data = calculate_cv_mse_curve(X, y, forward_results, "Forward Stepwise Selection")
+backward_cv_data = calculate_cv_mse_curve(X, y, backward_results, "Backward Stepwise Selection")
+
+plot_cv_mse_curves(best_subset_cv_data, forward_cv_data, backward_cv_data)
+cv_summary = create_cv_summary_table(best_subset_cv_data, forward_cv_data, backward_cv_data)
+detailed_evaluation = evaluate_optimal_models(X, y, best_subset_results, forward_results,
+                                              backward_results, best_subset_cv_data,
+                                              forward_cv_data, backward_cv_data)
